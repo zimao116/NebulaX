@@ -183,6 +183,34 @@ do
                 end
             end
         end
+
+        do
+            local Tab = Section:Tab({ Selected = false, Title = "Challenge", Icon = Cascade.Symbols.flagCheckered, })
+
+            do
+                local Form = Tab:PageSection({ Title = "Challenge Mode", }):Form()
+
+                do
+                    local Row = Form:Row({
+                        SearchIndex = "Auto Join Challenge",
+                    })
+
+                    Row:Left():TitleStack({
+                        Title = "Auto Join Challenge",
+                        Subtitle = "Join challenge automatically.",
+                    })
+
+                    local AutoJoinChallenge = Row:Right():Toggle({
+                        Value = false,
+                        ValueChanged = function(self, value: boolean)
+                            _G.AutoJoinChallenge = value
+                        end,
+                    })
+
+                    SaveManager:RegisterOption("Auto Join Challenge", AutoJoinChallenge)
+                end
+            end
+        end
     end
 
     do
@@ -256,22 +284,26 @@ do
 
                 do
                     local Row = Form:Row({
-                        SearchIndex = "Auto Set Max Speed",
+                        SearchIndex = "Auto Set Game Speed",
                     })
 
-                    Row:Left():TitleStack({
-                        Title = "Auto Set Max Speed",
-                        Subtitle = "Automatically set game speed to 2-3x",
+                    local Speed = Row:Left():TitleStack({
+                        Title = "Auto Set Game Speed ( 0 )",
+                        Subtitle = "Automatically set game speed to 1-3x",
                     })
 
-                    local AutoMaxSpeed = Row:Right():Toggle({
-                        Value = false,
+                    local AutoSetSpeed = Row:Right():Slider({
+                        Minimum = 1,
+                        Maximum = 3,
+                        Step = 1,
+                        Value = 2,
                         ValueChanged = function(self, value: boolean)
-                            _G.AutoMaxSpeed = value
+                            _G.SetSpeedGame = value
+                            Speed.Title = "Auto Set Game Speed ( " .. value .. " )"
                         end,
                     })
 
-                    SaveManager:RegisterOption("Auto Set Max Speed", AutoMaxSpeed)
+                    SaveManager:RegisterOption("Auto Set Game Speed", AutoSetSpeed)
                 end
             end
 
@@ -316,6 +348,26 @@ do
                     })
 
                     SaveManager:RegisterOption("Auto Next", AutoNext)
+                end
+
+                do
+                    local Row = Form:Row({
+                        SearchIndex = "Auto Back To Lobby",
+                    })
+
+                    Row:Left():TitleStack({
+                        Title = "Auto Back To Lobby",
+                        Subtitle = "Automatically back to lobby if game end.",
+                    })
+
+                    local AutoBackToLobby = Row:Right():Toggle({
+                        Value = false,
+                        ValueChanged = function(self, value: boolean)
+                            _G.AutoBackToLobby = value
+                        end,
+                    })
+
+                    SaveManager:RegisterOption("Auto Back To Lobby", AutoBackToLobby)
                 end
             end
         end
@@ -573,10 +625,14 @@ function Collection:NextGame()
     Voting["VoteNext"]:FireServer()
 end
 
-function Collection:SetMaxSpeed()
-    local MaxSpeed = PlayerData.Setting["Auto Set Max Speed"]
-    if not MaxSpeed.Value then
-        MaxSpeed.Value = true
+function Collection:BackToLobby()
+    Remote.Client.TeleportBack:FireServer()
+end
+
+function Collection:SetGameSpeed()
+    local GameSpeed = Game_Data.GameSpeed
+    if GameSpeed.Value ~= _G.SetSpeedGame then
+        Remote["SpeedGamepass"]:FireServer(_G.SetSpeedGame)
     end
 end
 
@@ -607,21 +663,31 @@ task.spawn(function()
         if _G.Enabled then
             local Success, Err = pcall(function()
                 if Collection:IsLobby() then
+                    local RoomExists = Collection:IsRoomExists()
                     if _G.AutoJoinStory then
-                        local RoomExists = Collection:IsRoomExists()
                         if RoomExists then
-                            if _G.FriendOnly then PlayRoom["Event"]:FireServer("Change-FriendOnly") end
-                            task.wait()
                             PlayRoom["Event"]:FireServer("Change-World", { ["World"] = _G.World })
                             PlayRoom["Event"]:FireServer("Change-Chapter", { ["Chapter"] = `{_G.World}_Chapter{_G.Chapter}` })
                             PlayRoom["Event"]:FireServer("Change-Difficulty", { ["Difficulty"] = _G.Difficuly })
-                            task.wait(1)
+                            if _G.FriendOnly then PlayRoom["Event"]:FireServer("Change-FriendOnly") end
+                            task.wait(0.5)
                             PlayRoom["Event"]:FireServer("Submit")
                             if RoomExists.Chapter.Value == `{_G.World}_Chapter{_G.Chapter}` and RoomExists.Difficulty.Value == _G.Difficuly then
                                 if _G.AutoStart then PlayRoom["Event"]:FireServer("Start") end
                             end
                         else
                             PlayRoom["Event"]:FireServer("Create")
+                        end
+                    end
+                    if _G.AutoJoinChallenge then
+                        if RoomExists then
+                            task.wait(0.5)
+                            PlayRoom["Event"]:FireServer("Submit")
+                            if RoomExists.Mode.Value == "Challenge" then
+                                if _G.AutoStart then PlayRoom["Event"]:FireServer("Start") end 
+                            end
+                        else
+                            PlayRoom["Event"]:FireServer("Create", { CreateChallengeRoom = true })
                         end
                     end
                 else
@@ -632,16 +698,23 @@ task.spawn(function()
 
                         Collection:HideRewardsUI()
                         if _G.Auto_Upgrade_Teams then Collection:TeamUpgrade() end
+
+                        if _G.SetSpeedGame then Collection:SetGameSpeed() end
                     else
                         if Game_Data.VotePlaying.VoteEnabled.Value then
                             if _G.AutoVote then Voting["VotePlaying"]:FireServer() end
                         end
-
-                        if _G.AutoMaxSpeed then Collection:SetMaxSpeed() end
                         
                         if _G.AutoReplay then Collection:RetryGame() end
 
                         if _G.AutoNext then Collection:NextGame() end
+
+                        if _G.AutoBackToLobby then
+                            if RewardsUI.Enabled then
+                                task.wait()
+                                Collection:BackToLobby()
+                            end
+                        end
                     end
                 end
             end)
@@ -654,7 +727,6 @@ end)
 
 RewardsUI:GetPropertyChangedSignal("Enabled"):Connect(function()
     if not RewardsUI.Enabled then return end
-    task.wait(0.5)
     local ItemsList = RewardsUI.Main.LeftSide.Rewards.ItemsList
     local rewards = {}
     for _, v in pairs(ItemsList:GetChildren()) do
