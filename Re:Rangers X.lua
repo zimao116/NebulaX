@@ -848,8 +848,12 @@ RewardsUI:GetPropertyChangedSignal("Enabled"):Connect(function()
 end)
 
 task.spawn(function()
+    local VirtualUser = game:GetService("VirtualUser")
     while true do
         task.wait(60 * 10)
+        VirtualUser:Button2Down(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
+        task.wait(0.1)
+        VirtualUser:Button2Up(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
         local Char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
         local Hum = Char:WaitForChild("Humanoid")
         Hum:Move(Vector3.new(1, 0, 0), false)
