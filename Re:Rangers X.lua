@@ -55,7 +55,7 @@ do
                     })
 
                     local FriendOnly = Row:Right():Toggle({
-                        Value = false,
+                        Value = true,
                         ValueChanged = function(self, value: boolean)
                             _G.FriendOnly = value
                         end,
@@ -180,6 +180,78 @@ do
                     })
 
                     SaveManager:RegisterOption("Auto Join Story", AutoJoinStory)
+                end
+            end
+        end
+
+        do
+            local Tab = Section:Tab({ Selected = false, Title = "Ranger Stages", Icon = Cascade.Symbols.gaugeOpenWithLinesNeedle33percent, })
+
+            do
+                local Form = Tab:PageSection({ Title = "Ranger Mode", }):Form()
+
+                do
+                    local Row = Form:Row({
+                        SearchIndex = "Select Map",
+                    })
+
+                    Row:Left():TitleStack({
+                        Title = "Select Map",
+                        Subtitle = "Select ranger map.",
+                    })
+
+                    local ChallengeMap = { "OnePiece", "Namek", "Naruto", "TokyoGhoul", "SAO", "JJK" }
+
+                    local SelectChallengeMap = Row:Right():PopUpButton({
+                        Options = ChallengeMap,
+                        ValueChanged = function(self, value)
+                            _G.ChallengeMap = ChallengeMap[value]
+                        end,
+                    })
+
+                    SaveManager:RegisterOption("Select Challenge Map", SelectChallengeMap)
+                end
+
+                do
+                    local Row = Form:Row({
+                        SearchIndex = "Select Act",
+                    })
+
+                    Row:Left():TitleStack({
+                        Title = "Select Act",
+                        Subtitle = "Select ranger act.",
+                    })
+
+                    local ChallengeAct = { "1", "2", "3", }
+
+                    local SelectChallengeAct = Row:Right():PopUpButton({
+                        Options = ChallengeAct,
+                        ValueChanged = function(self, value)
+                            _G.ChallengeAct = ChallengeAct[value]
+                        end,
+                    })
+
+                    SaveManager:RegisterOption("Select Challenge Act", SelectChallengeAct)
+                end
+
+                do
+                    local Row = Form:Row({
+                        SearchIndex = "Auto Join Ranger",
+                    })
+
+                    Row:Left():TitleStack({
+                        Title = "Auto Join Ranger",
+                        Subtitle = "Join ranger automatically.",
+                    })
+
+                    local AutoJoinRanger = Row:Right():Toggle({
+                        Value = false,
+                        ValueChanged = function(self, value: boolean)
+                            _G.AutoJoinRanger = value
+                        end,
+                    })
+
+                    SaveManager:RegisterOption("Auto Join Ranger", AutoJoinRanger)
                 end
             end
         end
@@ -578,10 +650,12 @@ local PlaceID = game.PlaceId
 local Player = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TeleportService = game:GetService("TeleportService")
 
 local LocalPlayer = Player.LocalPlayer
 local PlayerData = ReplicatedStorage.Player_Data[LocalPlayer.Name]
 local RewardsUI = LocalPlayer.PlayerGui.RewardsUI
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 
 local Values = ReplicatedStorage:WaitForChild("Values")
 local Replicated_PlayRoom = ReplicatedStorage:WaitForChild("PlayRoom")
@@ -592,6 +666,7 @@ local PlayRoom = Server:WaitForChild("PlayRoom")
 local Units = Server:WaitForChild("Units")
 local OnGame = Server:WaitForChild("OnGame")
 local Voting = OnGame:WaitForChild("Voting")
+local Humanoid = Character:WaitForChild("Humanoid")
 
 function Collection:IsLobby()
     return Game_Data.World.Value == ""
@@ -626,7 +701,7 @@ function Collection:NextGame()
 end
 
 function Collection:BackToLobby()
-    Remote.Client.TeleportBack:FireServer()
+    TeleportService:Teleport(PlaceID)
 end
 
 function Collection:SetGameSpeed()
@@ -679,6 +754,21 @@ task.spawn(function()
                             PlayRoom["Event"]:FireServer("Create")
                         end
                     end
+                    if _G.AutoJoinRanger then
+                        if RoomExists then
+                            PlayRoom["Event"]:FireServer("Change-Mode", { ["KeepWorld"] = "OnePiece", ["Mode"] = "Ranger Stage" })
+                            PlayRoom["Event"]:FireServer("Change-World", { ["World"] = _G.ChallengeMap })
+                            PlayRoom["Event"]:FireServer("Change-Chapter", { ["Chapter"] = `{_G.ChallengeMap}_RangerStage{_G.ChallengeAct}` })
+                            if _G.FriendOnly then PlayRoom["Event"]:FireServer("Change-FriendOnly") end
+                            task.wait(0.5)
+                            PlayRoom["Event"]:FireServer("Submit")
+                            if RoomExists.Chapter.Value == `{_G.ChallengeMap}_RangerStage{_G.ChallengeAct}` and RoomExists.Mode.Value == "Ranger Stage" then
+                                if _G.AutoStart then PlayRoom["Event"]:FireServer("Start") end
+                            end
+                        else
+                            PlayRoom["Event"]:FireServer("Create")
+                        end
+                    end
                     if _G.AutoJoinChallenge then
                         if RoomExists then
                             task.wait(0.5)
@@ -711,7 +801,7 @@ task.spawn(function()
 
                         if _G.AutoBackToLobby then
                             if RewardsUI.Enabled then
-                                task.wait()
+                                task.wait(0.5)
                                 Collection:BackToLobby()
                             end
                         end
@@ -727,6 +817,7 @@ end)
 
 RewardsUI:GetPropertyChangedSignal("Enabled"):Connect(function()
     if not RewardsUI.Enabled then return end
+    task.wait(0.1)
     local ItemsList = RewardsUI.Main.LeftSide.Rewards.ItemsList
     local rewards = {}
     for _, v in pairs(ItemsList:GetChildren()) do
@@ -758,10 +849,11 @@ end)
 
 task.spawn(function()
     while true do
-        task.wait(60 * 8)
-        local VirtualUser = game:GetService("VirtualUser")
-        VirtualUser:Button2Down(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
-        task.wait(1)
-        VirtualUser:Button2Up(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
+        task.wait(60 * 10)
+        local Char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+        local Hum = Char:WaitForChild("Humanoid")
+        Hum:Move(Vector3.new(1, 0, 0), false)
+        task.wait(0.1)
+        Hum:Move(Vector3.new(0, 0, 0), false)
     end
 end)
